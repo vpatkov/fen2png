@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"encoding/base64"
+	"encoding/csv"
 	"fmt"
 	"image"
 	"image/color"
@@ -21,19 +22,24 @@ import (
 
 const helpMessage = `Usage: fen2png [options] <fen> <output-file>
 Options:
-    --size=<size>  Diagram size (height and width) in pixels (default: 400)
-    --bg=<color>   Background color as hexadecimal RRGGBB (default: FFFFFF)
-    --fg=<color>   Foreground color as hexadecimal RRGGBB (default: 000000)
-    --grayscale    Output grayscale PNG
-    --base64       Base64 output
+    --size=<size>     Diagram size (height and width) in pixels (default: 400)
+    --bg=<color>      Background color as hexadecimal RRGGBB (default: FFFFFF)
+    --fg=<color>      Foreground color as hexadecimal RRGGBB (default: 000000)
+    --grayscale       Output grayscale PNG
+    --base64          Base64 output
+    --from-file       Parse CSV file <fen>,<output-file>
+    --turn-indicator  Show black dot in top right when it's black's turn
+    --coordinates     Add letters and numbers to chessboard
 Positional arguments:
-    <fen>          FEN record (only the first field is mandatory)
-    <output-file>  Output file name or "-" for the stdout
+    <fen>             FEN record (only the first field is mandatory)
+    <output-file>     Output file name or "-" for the stdout
 `
 
 type chessFont struct {
-	ttf    []byte
-	pieces map[rune][2]rune
+	ttf     []byte
+	pieces  map[rune][2]rune
+	numbers [8]rune
+	letters [8]rune
 	topLeftCorner,
 	topSide,
 	topRightCorner,
@@ -41,6 +47,7 @@ type chessFont struct {
 	rightSide,
 	bottomLeftCorner,
 	bottomSide,
+	turnIndicator,
 	bottomRightCorner rune
 }
 
@@ -66,6 +73,8 @@ var merida = chessFont{
 		'd': {'\uf02e', '\uf03a'}, // Black dot on light and dark squares
 		'x': {'\uf078', '\uf058'}, // Black cross on light and dark squares
 	},
+	numbers:           [8]rune{'\uf0c7', '\uf0c6', '\uf0c5', '\uf0c4', '\uf0c3', '\uf0c2', '\uf0c1', '\uf0c0'},
+	letters:           [8]rune{'\uf0c8', '\uf0c9', '\uf0ca', '\uf0cb', '\uf0cc', '\uf0cd', '\uf0ce', '\uf0cf'},
 	topLeftCorner:     '\uf031',
 	topSide:           '\uf032',
 	topRightCorner:    '\uf033',
@@ -74,6 +83,7 @@ var merida = chessFont{
 	bottomLeftCorner:  '\uf037',
 	bottomSide:        '\uf038',
 	bottomRightCorner: '\uf039',
+	turnIndicator:     '\uf02e',
 }
 
 func check(err error) {
@@ -83,14 +93,18 @@ func check(err error) {
 	}
 }
 
-func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
+func decodeFEN(fen string, f *chessFont, opts *options) (rows []string, turn string, err error) {
 	fields := strings.Fields(fen)
 	if len(fields) == 0 {
-		return nil, fmt.Errorf("empty FEN")
+		return nil, "", fmt.Errorf("empty FEN")
 	}
 	ranks := strings.Split(fields[0], "/")
 	if len(ranks) != 8 {
-		return nil, fmt.Errorf("%d ranks in FEN", len(ranks))
+		return nil, "", fmt.Errorf("%d ranks in FEN", len(ranks))
+	}
+	turn = "white"
+	if strings.Contains(fen, " b ") {
+		turn = "black"
 	}
 
 	// Top
@@ -105,7 +119,11 @@ func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
 	// Middle
 	for y, rank := range ranks {
 		row.Reset()
-		row.WriteRune(f.leftSide)
+		if opts.coordinates {
+			row.WriteRune(f.numbers[y])
+		} else {
+			row.WriteRune(f.leftSide)
+		}
 		x := 0
 		for _, piece := range rank {
 			if piece >= '1' && piece <= '8' {
@@ -120,12 +138,12 @@ func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
 					row.WriteRune(r[(x+y)%2])
 					x++
 				} else {
-					return nil, fmt.Errorf("unknown piece %q in FEN", piece)
+					return nil, "", fmt.Errorf("unknown piece %q in FEN", piece)
 				}
 			}
 		}
 		if x != 8 {
-			return nil, fmt.Errorf("%d files in FEN at rank %q", x, rank)
+			return nil, "", fmt.Errorf("%d files in FEN at rank %q", x, rank)
 		}
 		row.WriteRune(f.rightSide)
 		rows = append(rows, row.String())
@@ -135,22 +153,30 @@ func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
 	row.Reset()
 	row.WriteRune(f.bottomLeftCorner)
 	for i := 0; i < 8; i++ {
-		row.WriteRune(f.bottomSide)
+		if opts.coordinates {
+			row.WriteRune(f.letters[i])
+		} else {
+			row.WriteRune(f.bottomSide)
+		}
 	}
 	row.WriteRune(f.bottomRightCorner)
+	row.WriteRune(f.turnIndicator)
 	rows = append(rows, row.String())
 
-	return rows, nil
+	return rows, turn, nil
 }
 
 type options struct {
-	size       int
-	bg, fg     color.Color
-	grayscale  bool
-	base64     bool
-	fen        string
-	outputFile string
-	help       bool
+	size          int
+	bg, fg        color.Color
+	grayscale     bool
+	base64        bool
+	fen           string
+	fromFile      string
+	turnIndicator bool
+	coordinates   bool
+	outputFile    string
+	help          bool
 }
 
 func parseCmdLine(args []string) (opts *options, err error) {
@@ -199,12 +225,22 @@ func parseCmdLine(args []string) (opts *options, err error) {
 			opts.grayscale = true
 		case "--base64":
 			opts.base64 = true
+		case "--from-file":
+			opts.fromFile = value
+		case "--turn-indicator":
+			opts.turnIndicator = true
+		case "--coordinates":
+			opts.coordinates = true
 		case "--help":
 			opts.help = true
 			return opts, nil
 		default:
 			return nil, fmt.Errorf("unrecognized option: %q", option)
 		}
+	}
+
+	if len(opts.fromFile) > 0 {
+		return opts, nil
 	}
 
 	if len(args) < 1 {
@@ -225,6 +261,36 @@ func main() {
 		os.Exit(0)
 	}
 
+	if opts.fromFile == "" {
+		process(opts, opts.fen, opts.outputFile)
+		return
+	}
+
+	records, err := readCsvFile(opts.fromFile)
+	check(err)
+
+	for _, record := range records {
+		process(opts, record[0], record[1])
+	}
+}
+
+func readCsvFile(filePath string) (records [][]string, err error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read input file " + filePath)
+	}
+	defer f.Close()
+
+	csvReader := csv.NewReader(f)
+	records, err = csvReader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("Unable to parse file as CSV for " + filePath)
+	}
+
+	return records, nil
+}
+
+func process(opts *options, fen string, outputFile string) {
 	var diagram draw.Image
 	if opts.grayscale {
 		diagram = image.NewGray(image.Rect(0, 0, opts.size, opts.size))
@@ -244,21 +310,25 @@ func main() {
 	ctx.SetDst(diagram)
 	ctx.SetClip(diagram.Bounds())
 
-	rows, err := decodeFEN(opts.fen, &merida)
+	rows, turn, err := decodeFEN(fen, &merida, opts)
 	check(err)
 	height := fixed.Int26_6(fontSize * 64)
 	currentHeight := height
-	for _, row := range rows {
+	for i, row := range rows {
 		_, err = ctx.DrawString(row, fixed.Point26_6{0, currentHeight})
 		check(err)
 		currentHeight += height
+		if opts.turnIndicator && i == 0 && turn == "black" {
+			_, err = ctx.DrawString(string(merida.turnIndicator), fixed.Point26_6{(height * 9) - fixed.Int26_6(opts.size/2), currentHeight - (height / 3)})
+			check(err)
+		}
 	}
 
 	var output io.WriteCloser
-	if opts.outputFile == "-" {
+	if outputFile == "-" {
 		output = os.Stdout
 	} else {
-		output, err = os.Create(opts.outputFile)
+		output, err = os.Create(outputFile)
 		check(err)
 	}
 
