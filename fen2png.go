@@ -26,14 +26,17 @@ Options:
     --fg=<color>   Foreground color as hexadecimal RRGGBB (default: 000000)
     --grayscale    Output grayscale PNG
     --base64       Base64 output
+    --coordinates  Show coordinates on the diagram
 Positional arguments:
     <fen>          FEN record (only the first field is mandatory)
     <output-file>  Output file name or "-" for the stdout
 `
 
 type chessFont struct {
-	ttf    []byte
-	pieces map[rune][2]rune
+	ttf     []byte
+	pieces  map[rune][2]rune
+	numbers [8]rune
+	letters [8]rune
 	topLeftCorner,
 	topSide,
 	topRightCorner,
@@ -66,6 +69,14 @@ var merida = chessFont{
 		'd': {'\uf02e', '\uf03a'}, // Black dot on light and dark squares
 		'x': {'\uf078', '\uf058'}, // Black cross on light and dark squares
 	},
+	numbers: [8]rune{
+		'\uf0c7', '\uf0c6', '\uf0c5', '\uf0c4', // 8, 7, 6, 5
+		'\uf0c3', '\uf0c2', '\uf0c1', '\uf0c0', // 4, 3, 2, 1
+	},
+	letters: [8]rune{
+		'\uf0c8', '\uf0c9', '\uf0ca', '\uf0cb', // a, b, c, d
+		'\uf0cc', '\uf0cd', '\uf0ce', '\uf0cf', // e, f, g, h
+	},
 	topLeftCorner:     '\uf031',
 	topSide:           '\uf032',
 	topRightCorner:    '\uf033',
@@ -83,7 +94,7 @@ func check(err error) {
 	}
 }
 
-func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
+func decodeFEN(fen string, f *chessFont, coordinates bool) (rows []string, err error) {
 	fields := strings.Fields(fen)
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("empty FEN")
@@ -105,7 +116,11 @@ func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
 	// Middle
 	for y, rank := range ranks {
 		row.Reset()
-		row.WriteRune(f.leftSide)
+		if coordinates {
+			row.WriteRune(f.numbers[y])
+		} else {
+			row.WriteRune(f.leftSide)
+		}
 		x := 0
 		for _, piece := range rank {
 			if piece >= '1' && piece <= '8' {
@@ -135,7 +150,11 @@ func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
 	row.Reset()
 	row.WriteRune(f.bottomLeftCorner)
 	for i := 0; i < 8; i++ {
-		row.WriteRune(f.bottomSide)
+		if coordinates {
+			row.WriteRune(f.letters[i])
+		} else {
+			row.WriteRune(f.bottomSide)
+		}
 	}
 	row.WriteRune(f.bottomRightCorner)
 	rows = append(rows, row.String())
@@ -144,13 +163,14 @@ func decodeFEN(fen string, f *chessFont) (rows []string, err error) {
 }
 
 type options struct {
-	size       int
-	bg, fg     color.Color
-	grayscale  bool
-	base64     bool
-	fen        string
-	outputFile string
-	help       bool
+	size        int
+	bg, fg      color.Color
+	grayscale   bool
+	base64      bool
+	coordinates bool
+	fen         string
+	outputFile  string
+	help        bool
 }
 
 func parseCmdLine(args []string) (opts *options, err error) {
@@ -199,6 +219,8 @@ func parseCmdLine(args []string) (opts *options, err error) {
 			opts.grayscale = true
 		case "--base64":
 			opts.base64 = true
+		case "--coordinates":
+			opts.coordinates = true
 		case "--help":
 			opts.help = true
 			return opts, nil
@@ -244,7 +266,7 @@ func main() {
 	ctx.SetDst(diagram)
 	ctx.SetClip(diagram.Bounds())
 
-	rows, err := decodeFEN(opts.fen, &merida)
+	rows, err := decodeFEN(opts.fen, &merida, opts.coordinates)
 	check(err)
 	height := fixed.Int26_6(fontSize * 64)
 	currentHeight := height
