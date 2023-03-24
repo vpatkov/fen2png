@@ -24,6 +24,7 @@ Options:
     --fg=<color>   Foreground color as hexadecimal RRGGBB (default: 000000)
     --grayscale    Output grayscale PNG
     --base64       Base64 output
+    --coordinates  Show coordinates on the diagram
 Positional arguments:
     <fen>          FEN record (only the first field is mandatory)
     <output-file>  Output file name or "-" for the stdout
