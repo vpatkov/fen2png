@@ -27,8 +27,10 @@ Options:
     --grayscale    Output grayscale PNG
     --base64       Base64 output
     --coordinates  Show coordinates on the diagram
+    --flip         Flip the diagram
+    --auto-flip    Flip the diagram if Black to move
 Positional arguments:
-    <fen>          FEN record (only the first field is mandatory)
+    <fen>          FEN record
     <output-file>  Output file name or "-" for the stdout
 `
 
@@ -94,11 +96,28 @@ func check(err error) {
 	}
 }
 
-func decodeFEN(fen string, f *chessFont, coordinates bool) (rows []string, err error) {
+func reverse(s string) string {
+	runes := []rune(s)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return string(runes)
+}
+
+func decodeFEN(fen string, f *chessFont, opts *options) (rows []string, err error) {
 	fields := strings.Fields(fen)
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("empty FEN")
 	}
+
+	if opts.autoFlip && len(fields) < 2 {
+		return nil, fmt.Errorf("the second field of FEN is required for auto-flip")
+	}
+	flip := opts.flip || (opts.autoFlip && fields[1] == "b")
+	if flip {
+		fields[0] = reverse(fields[0])
+	}
+
 	ranks := strings.Split(fields[0], "/")
 	if len(ranks) != 8 {
 		return nil, fmt.Errorf("%d ranks in FEN", len(ranks))
@@ -116,8 +135,12 @@ func decodeFEN(fen string, f *chessFont, coordinates bool) (rows []string, err e
 	// Middle
 	for y, rank := range ranks {
 		row.Reset()
-		if coordinates {
-			row.WriteRune(f.numbers[y])
+		if opts.coordinates {
+			if flip {
+				row.WriteRune(f.numbers[7-y])
+			} else {
+				row.WriteRune(f.numbers[y])
+			}
 		} else {
 			row.WriteRune(f.leftSide)
 		}
@@ -150,8 +173,12 @@ func decodeFEN(fen string, f *chessFont, coordinates bool) (rows []string, err e
 	row.Reset()
 	row.WriteRune(f.bottomLeftCorner)
 	for i := 0; i < 8; i++ {
-		if coordinates {
-			row.WriteRune(f.letters[i])
+		if opts.coordinates {
+			if flip {
+				row.WriteRune(f.letters[7-i])
+			} else {
+				row.WriteRune(f.letters[i])
+			}
 		} else {
 			row.WriteRune(f.bottomSide)
 		}
@@ -168,6 +195,8 @@ type options struct {
 	grayscale   bool
 	base64      bool
 	coordinates bool
+	flip        bool
+	autoFlip    bool
 	fen         string
 	outputFile  string
 	help        bool
@@ -221,6 +250,10 @@ func parseCmdLine(args []string) (opts *options, err error) {
 			opts.base64 = true
 		case "--coordinates":
 			opts.coordinates = true
+		case "--flip":
+			opts.flip = true
+		case "--auto-flip":
+			opts.autoFlip = true
 		case "--help":
 			opts.help = true
 			return opts, nil
@@ -266,7 +299,7 @@ func main() {
 	ctx.SetDst(diagram)
 	ctx.SetClip(diagram.Bounds())
 
-	rows, err := decodeFEN(opts.fen, &merida, opts.coordinates)
+	rows, err := decodeFEN(opts.fen, &merida, opts)
 	check(err)
 	height := fixed.Int26_6(fontSize * 64)
 	currentHeight := height

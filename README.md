@@ -11,7 +11,9 @@ FEN notation is extended with dots `d` and crosses `x` to mark squares.
 
 The program is created with the goal of rendering FEN in Markdown documents.
 A Lua filter for Pandoc is included: it replaces code blocks that have `fen`
-syntax with the diagrams, embedded in base64 (as data URL).
+syntax with the diagrams, embedded in base64 (as data URL). A FEN record should
+be written on the first line of the code block, options for the fen2png can be
+written on the second line.
 
 
 ## Usage
@@ -25,8 +27,10 @@ Options:
     --grayscale    Output grayscale PNG
     --base64       Base64 output
     --coordinates  Show coordinates on the diagram
+    --flip         Flip the diagram
+    --auto-flip    Flip the diagram if Black to move
 Positional arguments:
-    <fen>          FEN record (only the first field is mandatory)
+    <fen>          FEN record
     <output-file>  Output file name or "-" for the stdout
 ```
 
