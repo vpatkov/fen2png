@@ -22,13 +22,17 @@ written on the second line.
 Usage: fen2png [options] <fen> <output-file>
 Options:
     --size=<size>  Diagram size (height and width) in pixels (default: 400)
-    --bg=<color>   Background color as hexadecimal RRGGBB (default: FFFFFF)
-    --fg=<color>   Foreground color as hexadecimal RRGGBB (default: 000000)
-    --grayscale    Output grayscale PNG
+    --bg=<color>   Background color (default: FFFFFF)
+    --fg=<color>   Foreground color (default: 0)
     --base64       Base64 output
     --coordinates  Show coordinates on the diagram
     --flip         Flip the diagram
     --auto-flip    Flip the diagram if Black to move
+
+Color must be a hexadecimal number with the four octets from the most to the
+least significant represents transparency, red, green, and blue components
+respectively. Transparency of 0 means fully opaque.
+
 Positional arguments:
     <fen>          FEN record
     <output-file>  Output file name or "-" for the stdout

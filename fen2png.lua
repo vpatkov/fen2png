@@ -10,10 +10,6 @@ function CodeBlock(block)
             end
         end
 
-        if next(args) == nil then
-            table.insert(args, "--grayscale")
-        end
-
         table.insert(args, "--base64")
         table.insert(args, fen)
         table.insert(args, "-")

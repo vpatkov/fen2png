@@ -22,13 +22,17 @@ import (
 const helpMessage = `Usage: fen2png [options] <fen> <output-file>
 Options:
     --size=<size>  Diagram size (height and width) in pixels (default: 400)
-    --bg=<color>   Background color as hexadecimal RRGGBB (default: FFFFFF)
-    --fg=<color>   Foreground color as hexadecimal RRGGBB (default: 000000)
-    --grayscale    Output grayscale PNG
+    --bg=<color>   Background color (default: FFFFFF)
+    --fg=<color>   Foreground color (default: 0)
     --base64       Base64 output
     --coordinates  Show coordinates on the diagram
     --flip         Flip the diagram
     --auto-flip    Flip the diagram if Black to move
+
+Color must be a hexadecimal number with the four octets from the most to the
+least significant represents transparency, red, green, and blue components
+respectively. Transparency of 0 means fully opaque.
+
 Positional arguments:
     <fen>          FEN record
     <output-file>  Output file name or "-" for the stdout
@@ -102,6 +106,11 @@ func reverse(s string) string {
 		runes[i], runes[j] = runes[j], runes[i]
 	}
 	return string(runes)
+}
+
+func isGray(c color.Color) bool {
+	r, g, b, a := c.RGBA()
+	return r == g && g == b && a == 0xffff
 }
 
 func decodeFEN(fen string, f *chessFont, opts *options) (rows []string, err error) {
@@ -192,7 +201,6 @@ func decodeFEN(fen string, f *chessFont, opts *options) (rows []string, err erro
 type options struct {
 	size        int
 	bg, fg      color.Color
-	grayscale   bool
 	base64      bool
 	coordinates bool
 	flip        bool
@@ -229,23 +237,22 @@ func parseCmdLine(args []string) (opts *options, err error) {
 			if !hasValue {
 				return nil, fmt.Errorf("missing value for option %q", option)
 			}
+			value = strings.TrimPrefix(value, "0x")
 			hex, err := strconv.ParseUint(value, 16, 32)
 			if err != nil {
 				return nil, fmt.Errorf("invalid value for option %q", option)
 			}
-			c := color.RGBA{
-				uint8((hex >> 16) & 0xff),
-				uint8((hex >> 8) & 0xff),
-				uint8(hex & 0xff),
-				0xff,
+			c := color.NRGBA{
+				R: uint8((hex >> 16) & 0xff),
+				G: uint8((hex >> 8) & 0xff),
+				B: uint8(hex & 0xff),
+				A: uint8((^hex >> 24) & 0xff),
 			}
 			if option == "--bg" {
 				opts.bg = c
 			} else {
 				opts.fg = c
 			}
-		case "--grayscale":
-			opts.grayscale = true
 		case "--base64":
 			opts.base64 = true
 		case "--coordinates":
@@ -281,7 +288,7 @@ func main() {
 	}
 
 	var diagram draw.Image
-	if opts.grayscale {
+	if isGray(opts.bg) && isGray(opts.fg) {
 		diagram = image.NewGray(image.Rect(0, 0, opts.size, opts.size))
 	} else {
 		diagram = image.NewNRGBA(image.Rect(0, 0, opts.size, opts.size))
