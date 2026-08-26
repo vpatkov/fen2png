@@ -5,7 +5,8 @@ books.
 ![](example.png "r3qb1k/1b4p1/p2pr2p/3n4/Pnp1N1N1/6RP/1B3PP1/1B1QR1K1 w")
 
 For drawing, the program uses a TTF chess font (Merida), so creates
-high-quality output images independent of size.
+high-quality output images independent of size. With the `--svg` option the
+glyphs are converted to vector paths, producing a self-contained SVG document.
 
 FEN notation is extended with dots `d` and crosses `x` to mark squares.
 
@@ -28,6 +29,8 @@ Options:
     --coordinates  Show coordinates on the diagram
     --flip         Flip the diagram
     --auto-flip    Flip the diagram if Black to move
+    --png          Output PNG (default)
+    --svg          Output SVG
 
 Color must be a hexadecimal number with the four octets from the most to the
 least significant represents transparency, red, green, and blue components

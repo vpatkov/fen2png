@@ -28,6 +28,8 @@ Options:
     --coordinates  Show coordinates on the diagram
     --flip         Flip the diagram
     --auto-flip    Flip the diagram if Black to move
+    --png          Output PNG (default)
+    --svg          Output SVG
 
 Color must be a hexadecimal number with the four octets from the most to the
 least significant represents transparency, red, green, and blue components
@@ -205,6 +207,8 @@ type options struct {
 	coordinates bool
 	flip        bool
 	autoFlip    bool
+	png         bool
+	svg         bool
 	fen         string
 	outputFile  string
 	help        bool
@@ -261,12 +265,20 @@ func parseCmdLine(args []string) (opts *options, err error) {
 			opts.flip = true
 		case "--auto-flip":
 			opts.autoFlip = true
+		case "--svg":
+			opts.svg = true
+		case "--png":
+			opts.png = true
 		case "--help":
 			opts.help = true
 			return opts, nil
 		default:
 			return nil, fmt.Errorf("unrecognized option: %q", option)
 		}
+	}
+
+	if opts.png && opts.svg {
+		return nil, fmt.Errorf("--png and --svg cannot be combined")
 	}
 
 	if len(args) < 1 {
@@ -279,12 +291,37 @@ func parseCmdLine(args []string) (opts *options, err error) {
 	return opts, nil
 }
 
+func openOutput(opts *options) (io.WriteCloser, error) {
+	if opts.outputFile == "-" {
+		return os.Stdout, nil
+	}
+	return os.Create(opts.outputFile)
+}
+
 func main() {
 	opts, err := parseCmdLine(os.Args[1:])
 	check(err)
 	if opts.help {
 		fmt.Print(helpMessage)
 		os.Exit(0)
+	}
+
+	rows, err := decodeFEN(opts.fen, &merida, opts)
+	check(err)
+
+	if opts.svg {
+		svg, err := renderSVG(opts, rows)
+		check(err)
+		output, err := openOutput(opts)
+		check(err)
+		if opts.base64 {
+			output = base64.NewEncoder(base64.StdEncoding, output)
+		}
+		_, err = output.Write(svg)
+		check(err)
+		err = output.Close()
+		check(err)
+		return
 	}
 
 	var diagram draw.Image
@@ -306,8 +343,6 @@ func main() {
 	ctx.SetDst(diagram)
 	ctx.SetClip(diagram.Bounds())
 
-	rows, err := decodeFEN(opts.fen, &merida, opts)
-	check(err)
 	height := fixed.Int26_6(fontSize * 64)
 	currentHeight := height
 	for _, row := range rows {
@@ -316,14 +351,8 @@ func main() {
 		currentHeight += height
 	}
 
-	var output io.WriteCloser
-	if opts.outputFile == "-" {
-		output = os.Stdout
-	} else {
-		output, err = os.Create(opts.outputFile)
-		check(err)
-	}
-
+	output, err := openOutput(opts)
+	check(err)
 	if opts.base64 {
 		output = base64.NewEncoder(base64.StdEncoding, output)
 	}
