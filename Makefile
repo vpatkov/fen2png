@@ -3,8 +3,8 @@ PREFIX = /usr/local
 
 all: $(TARGET)
 
-$(TARGET): $(TARGET).go
-	go build -o $@ $<
+$(TARGET):
+	go build -o $@
 
 tidy:
 	go mod tidy
